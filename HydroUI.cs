@@ -489,7 +489,8 @@ namespace Oxide.Plugins
             }
             else if (hudData.IsRace)
             {
-                // Display mode based on RaceMode: "normal" shows [Race], "battle" shows [Battle]
+                // Display based on RaceMode string: "normal"→[Race], "battle"→[Battle]
+                // Note: IsRace is a legacy boolean that should always be true during active races
                 modeIndicator = hudData.RaceMode == "battle" ? "[Battle]" : "[Race]";
             }
 

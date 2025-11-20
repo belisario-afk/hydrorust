@@ -684,8 +684,10 @@ namespace Oxide.Plugins
                     result["TrackName"] = state.CurrentTrack.Name;
                     result["TotalLaps"] = state.CurrentTrack.TotalLaps;
                     result["TotalCheckpoints"] = state.CurrentTrack.Checkpoints.Count;
+                    // IsRace: legacy boolean, true during active racing
                     result["IsRace"] = state.CurrentTrack.IsRace;
-                    // Map IsRace to mode string: true="normal" (standard racing), false="battle"
+                    // RaceMode: string for UI display - "normal" for standard racing, "battle" for combat
+                    // Track.IsRace=true maps to "normal", false maps to "battle"
                     result["RaceMode"] = state.CurrentTrack.IsRace ? "normal" : "battle";
                 }
 
@@ -810,7 +812,7 @@ namespace Oxide.Plugins
 
             if (args.Length == 0)
             {
-                player.ChatMessage("HydroRust v5.2.0 - Use /hydro help for commands");
+                player.ChatMessage($"{Title} v{Version} - Use /hydro help for commands");
                 return;
             }
 
