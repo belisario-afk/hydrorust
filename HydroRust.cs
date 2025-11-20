@@ -513,7 +513,7 @@ namespace Oxide.Plugins
             if (currentVoting == null)
                 return;
 
-            // Determine winner - on tie, default to normal mode
+            // Determine winner - use >= so normal mode wins on ties (including 0-0)
             int normalVotes = currentVoting.Votes["normal"];
             int battleVotes = currentVoting.Votes["battle"];
             string winner = normalVotes >= battleVotes ? "normal" : "battle";
