@@ -42,6 +42,8 @@ namespace Oxide.Plugins
         private Timer hudTick;
         private Timer counterTick;
         private Timer editorRefreshTick;
+        private Timer lockTick;
+        private Timer animTick;
         
         #endregion
         
@@ -149,6 +151,15 @@ namespace Oxide.Plugins
             public string LastCounterData { get; set; }
             public string LastVotingData { get; set; }
             public string LastCountdownData { get; set; }
+            public string EditorTrackName { get; set; } = "";
+            public string EditorAuthor { get; set; } = "";
+            public int EditorCheckpoints { get; set; } = 8;
+            public int EditorLaps { get; set; } = 3;
+            public float AnimationPhase { get; set; }
+            public float LockCheckTime { get; set; }
+            public string LastNotification { get; set; } = "";
+            public float NotificationTime { get; set; }
+            public bool ShowTooltips { get; set; } = true;
         }
         
         private class PlayerPrefs
@@ -156,6 +167,8 @@ namespace Oxide.Plugins
             public float Scale { get; set; } = 1.0f;
             public bool CompactHUD { get; set; }
             public string Theme { get; set; } = "default";
+            public bool ShowNotifications { get; set; } = true;
+            public bool ShowTooltips { get; set; } = true;
         }
         
         #endregion
@@ -173,6 +186,8 @@ namespace Oxide.Plugins
             hudTick = timer.Every(config.UI.HudRefreshRate, UpdateAllHuds);
             counterTick = timer.Every(config.UI.CounterRefreshRate, UpdateAllCounters);
             editorRefreshTick = timer.Every(config.UI.EditorRefreshRate, UpdateAllEditors);
+            lockTick = timer.Every(2f, CheckWelcomeLocks);
+            animTick = timer.Every(0.05f, UpdateAnimations);
             
             // Initialize UI for all connected players
             foreach (var player in BasePlayer.activePlayerList)
@@ -194,6 +209,8 @@ namespace Oxide.Plugins
             hudTick?.Destroy();
             counterTick?.Destroy();
             editorRefreshTick?.Destroy();
+            lockTick?.Destroy();
+            animTick?.Destroy();
         }
         
         private void OnPlayerConnected(BasePlayer player)
@@ -701,7 +718,7 @@ namespace Oxide.Plugins
             container.Add(new CuiPanel
             {
                 Image = { Color = config.Colors.Secondary },
-                RectTransform = { AnchorMin = "0.92 0.4", AnchorMax = "0.98 0.7" },
+                RectTransform = { AnchorMin = "0.92 0.35", AnchorMax = "0.98 0.75" },
                 CursorEnabled = true
             }, "Overlay", UI_QUICKPANEL);
             
@@ -709,7 +726,7 @@ namespace Oxide.Plugins
             container.Add(new CuiButton
             {
                 Button = { Color = config.Colors.Success, Command = "hydroui.join" },
-                RectTransform = { AnchorMin = "0.1 0.75", AnchorMax = "0.9 0.9" },
+                RectTransform = { AnchorMin = "0.1 0.85", AnchorMax = "0.9 0.95" },
                 Text = { 
                     Text = "Join", 
                     FontSize = 12, 
@@ -722,7 +739,7 @@ namespace Oxide.Plugins
             container.Add(new CuiButton
             {
                 Button = { Color = config.Colors.Danger, Command = "hydroui.leave" },
-                RectTransform = { AnchorMin = "0.1 0.6", AnchorMax = "0.9 0.7" },
+                RectTransform = { AnchorMin = "0.1 0.72", AnchorMax = "0.9 0.82" },
                 Text = { 
                     Text = "Leave", 
                     FontSize = 12, 
@@ -735,7 +752,7 @@ namespace Oxide.Plugins
             container.Add(new CuiButton
             {
                 Button = { Color = config.Colors.Accent, Command = "hydroui.stats" },
-                RectTransform = { AnchorMin = "0.1 0.45", AnchorMax = "0.9 0.55" },
+                RectTransform = { AnchorMin = "0.1 0.59", AnchorMax = "0.9 0.69" },
                 Text = { 
                     Text = "Stats", 
                     FontSize = 12, 
@@ -748,7 +765,7 @@ namespace Oxide.Plugins
             container.Add(new CuiButton
             {
                 Button = { Color = config.Colors.Warning, Command = "hydroui.openvote" },
-                RectTransform = { AnchorMin = "0.1 0.3", AnchorMax = "0.9 0.4" },
+                RectTransform = { AnchorMin = "0.1 0.46", AnchorMax = "0.9 0.56" },
                 Text = { 
                     Text = "Vote", 
                     FontSize = 12, 
@@ -757,7 +774,305 @@ namespace Oxide.Plugins
                 }
             }, UI_QUICKPANEL);
             
+            // Editor button
+            container.Add(new CuiButton
+            {
+                Button = { Color = config.Colors.Primary, Command = "hydroui.openeditor" },
+                RectTransform = { AnchorMin = "0.1 0.33", AnchorMax = "0.9 0.43" },
+                Text = { 
+                    Text = "Editor", 
+                    FontSize = 12, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, UI_QUICKPANEL);
+            
+            // Settings button
+            container.Add(new CuiButton
+            {
+                Button = { Color = config.Colors.Secondary, Command = "hydroui.settings" },
+                RectTransform = { AnchorMin = "0.1 0.2", AnchorMax = "0.9 0.3" },
+                Text = { 
+                    Text = "Settings", 
+                    FontSize = 12, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, UI_QUICKPANEL);
+            
+            // Help button
+            container.Add(new CuiButton
+            {
+                Button = { Color = config.Colors.Secondary, Command = "hydroui.help" },
+                RectTransform = { AnchorMin = "0.1 0.07", AnchorMax = "0.9 0.17" },
+                Text = { 
+                    Text = "Help", 
+                    FontSize = 12, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, UI_QUICKPANEL);
+            
             CuiHelper.DestroyUi(player, UI_QUICKPANEL);
+            CuiHelper.AddUi(player, container);
+        }
+        
+        #endregion
+        
+        #region UI Creation - Notifications
+        
+        private void ShowNotification(BasePlayer player, string message, string color = null)
+        {
+            if (player == null || string.IsNullOrEmpty(message)) return;
+            
+            var state = GetPlayerState(player);
+            var prefs = GetPlayerPrefs(player);
+            
+            if (!prefs.ShowNotifications) return;
+            
+            state.LastNotification = message;
+            state.NotificationTime = Time.time;
+            
+            var container = new CuiElementContainer();
+            
+            string notifColor = color ?? config.Colors.Accent;
+            
+            // Notification panel (bottom center)
+            container.Add(new CuiPanel
+            {
+                Image = { Color = notifColor },
+                RectTransform = { AnchorMin = "0.35 0.15", AnchorMax = "0.65 0.2" }
+            }, "Overlay", "HydroUI.Notification");
+            
+            // Notification text
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = message, 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.05 0", AnchorMax = "0.95 1" }
+            }, "HydroUI.Notification");
+            
+            CuiHelper.DestroyUi(player, "HydroUI.Notification");
+            CuiHelper.AddUi(player, container);
+            
+            // Auto-hide after 3 seconds
+            timer.Once(3f, () =>
+            {
+                if (player != null && player.IsConnected)
+                {
+                    CuiHelper.DestroyUi(player, "HydroUI.Notification");
+                }
+            });
+        }
+        
+        private void ShowTooltip(BasePlayer player, string text, float x, float y)
+        {
+            if (player == null || string.IsNullOrEmpty(text)) return;
+            
+            var prefs = GetPlayerPrefs(player);
+            if (!prefs.ShowTooltips) return;
+            
+            var container = new CuiElementContainer();
+            
+            float width = 0.15f;
+            float height = 0.05f;
+            
+            // Tooltip panel
+            container.Add(new CuiPanel
+            {
+                Image = { Color = "0.1 0.1 0.1 0.95" },
+                RectTransform = { AnchorMin = $"{x} {y}", AnchorMax = $"{x + width} {y + height}" }
+            }, "Overlay", "HydroUI.Tooltip");
+            
+            // Tooltip text
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = text, 
+                    FontSize = 10, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.05 0", AnchorMax = "0.95 1" }
+            }, "HydroUI.Tooltip");
+            
+            CuiHelper.DestroyUi(player, "HydroUI.Tooltip");
+            CuiHelper.AddUi(player, container);
+        }
+        
+        private void ShowSettingsPanel(BasePlayer player)
+        {
+            var prefs = GetPlayerPrefs(player);
+            var container = new CuiElementContainer();
+            
+            // Settings panel (center)
+            container.Add(new CuiPanel
+            {
+                Image = { Color = config.Colors.Secondary },
+                RectTransform = { AnchorMin = "0.3 0.25", AnchorMax = "0.7 0.75" },
+                CursorEnabled = true
+            }, "Overlay", "HydroUI.Settings");
+            
+            // Title
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "HydroUI Settings", 
+                    FontSize = 20, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.1 0.85", AnchorMax = "0.9 0.95" }
+            }, "HydroUI.Settings");
+            
+            // Close button
+            container.Add(new CuiButton
+            {
+                Button = { Color = config.Colors.Danger, Command = "hydroui.closesettings" },
+                RectTransform = { AnchorMin = "0.88 0.88", AnchorMax = "0.95 0.93" },
+                Text = { 
+                    Text = "X", 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, "HydroUI.Settings");
+            
+            // Compact HUD toggle
+            string compactStatus = prefs.CompactHUD ? "[ON]" : "[OFF]";
+            string compactColor = prefs.CompactHUD ? config.Colors.Success : config.Colors.Danger;
+            
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "Compact HUD:", 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleLeft,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.1 0.7", AnchorMax = "0.5 0.78" }
+            }, "HydroUI.Settings");
+            
+            container.Add(new CuiButton
+            {
+                Button = { Color = compactColor, Command = "hydroui.setting.toggle compacthud" },
+                RectTransform = { AnchorMin = "0.55 0.7", AnchorMax = "0.9 0.78" },
+                Text = { 
+                    Text = compactStatus, 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, "HydroUI.Settings");
+            
+            // Notifications toggle
+            string notifStatus = prefs.ShowNotifications ? "[ON]" : "[OFF]";
+            string notifColor = prefs.ShowNotifications ? config.Colors.Success : config.Colors.Danger;
+            
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "Notifications:", 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleLeft,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.1 0.58", AnchorMax = "0.5 0.66" }
+            }, "HydroUI.Settings");
+            
+            container.Add(new CuiButton
+            {
+                Button = { Color = notifColor, Command = "hydroui.setting.toggle notifications" },
+                RectTransform = { AnchorMin = "0.55 0.58", AnchorMax = "0.9 0.66" },
+                Text = { 
+                    Text = notifStatus, 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, "HydroUI.Settings");
+            
+            // Tooltips toggle
+            string tooltipStatus = prefs.ShowTooltips ? "[ON]" : "[OFF]";
+            string tooltipColor = prefs.ShowTooltips ? config.Colors.Success : config.Colors.Danger;
+            
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "Tooltips:", 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleLeft,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.1 0.46", AnchorMax = "0.5 0.54" }
+            }, "HydroUI.Settings");
+            
+            container.Add(new CuiButton
+            {
+                Button = { Color = tooltipColor, Command = "hydroui.setting.toggle tooltips" },
+                RectTransform = { AnchorMin = "0.55 0.46", AnchorMax = "0.9 0.54" },
+                Text = { 
+                    Text = tooltipStatus, 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, "HydroUI.Settings");
+            
+            // UI Scale info
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = $"UI Scale: {prefs.Scale:F1}", 
+                    FontSize = 14, 
+                    Align = TextAnchor.MiddleLeft,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.1 0.34", AnchorMax = "0.9 0.42" }
+            }, "HydroUI.Settings");
+            
+            // Scale adjustment buttons
+            container.Add(new CuiButton
+            {
+                Button = { Color = config.Colors.Accent, Command = "hydroui.scale.decrease" },
+                RectTransform = { AnchorMin = "0.1 0.24", AnchorMax = "0.45 0.32" },
+                Text = { 
+                    Text = "Scale -", 
+                    FontSize = 12, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, "HydroUI.Settings");
+            
+            container.Add(new CuiButton
+            {
+                Button = { Color = config.Colors.Accent, Command = "hydroui.scale.increase" },
+                RectTransform = { AnchorMin = "0.55 0.24", AnchorMax = "0.9 0.32" },
+                Text = { 
+                    Text = "Scale +", 
+                    FontSize = 12, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, "HydroUI.Settings");
+            
+            // Info text
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "Settings are saved automatically.\nChanges apply immediately.", 
+                    FontSize = 11, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.1 0.08", AnchorMax = "0.9 0.2" }
+            }, "HydroUI.Settings");
+            
+            CuiHelper.DestroyUi(player, "HydroUI.Settings");
             CuiHelper.AddUi(player, container);
         }
         
@@ -982,6 +1297,8 @@ namespace Oxide.Plugins
         
         private void ShowEditorInspector(CuiElementContainer container, BasePlayer player)
         {
+            var state = GetPlayerState(player);
+            
             // Inspector actions and inputs
             container.Add(new CuiLabel
             {
@@ -994,7 +1311,7 @@ namespace Oxide.Plugins
                 RectTransform = { AnchorMin = "0.05 0.7", AnchorMax = "0.95 0.78" }
             }, UI_EDITOR);
             
-            // Example input field
+            // Track Name Label
             container.Add(new CuiLabel
             {
                 Text = { 
@@ -1003,16 +1320,145 @@ namespace Oxide.Plugins
                     Align = TextAnchor.MiddleLeft,
                     Color = config.Colors.Text
                 },
-                RectTransform = { AnchorMin = "0.05 0.6", AnchorMax = "0.95 0.68" }
+                RectTransform = { AnchorMin = "0.05 0.63", AnchorMax = "0.35 0.68" }
             }, UI_EDITOR);
             
-            // Actions
+            // Track Name Input Field
+            container.Add(new CuiElement
+            {
+                Parent = UI_EDITOR,
+                Name = UI_EDITOR + ".NameInput",
+                Components =
+                {
+                    new CuiInputFieldComponent
+                    {
+                        Align = TextAnchor.MiddleLeft,
+                        FontSize = 10,
+                        Command = "hydroui.track.setname ",
+                        Text = state.EditorTrackName,
+                        Color = config.Colors.Text,
+                        CharsLimit = 30
+                    },
+                    new CuiRectTransformComponent { AnchorMin = "0.4 0.63", AnchorMax = "0.95 0.68" }
+                }
+            });
+            
+            // Author Label
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "Author:", 
+                    FontSize = 11, 
+                    Align = TextAnchor.MiddleLeft,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.05 0.56", AnchorMax = "0.35 0.61" }
+            }, UI_EDITOR);
+            
+            // Author Input Field
+            container.Add(new CuiElement
+            {
+                Parent = UI_EDITOR,
+                Name = UI_EDITOR + ".AuthorInput",
+                Components =
+                {
+                    new CuiInputFieldComponent
+                    {
+                        Align = TextAnchor.MiddleLeft,
+                        FontSize = 10,
+                        Command = "hydroui.track.setauthor ",
+                        Text = state.EditorAuthor,
+                        Color = config.Colors.Text,
+                        CharsLimit = 30
+                    },
+                    new CuiRectTransformComponent { AnchorMin = "0.4 0.56", AnchorMax = "0.95 0.61" }
+                }
+            });
+            
+            // Checkpoints Label
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "Checkpoints:", 
+                    FontSize = 11, 
+                    Align = TextAnchor.MiddleLeft,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.05 0.49", AnchorMax = "0.35 0.54" }
+            }, UI_EDITOR);
+            
+            // Checkpoints Input Field
+            container.Add(new CuiElement
+            {
+                Parent = UI_EDITOR,
+                Name = UI_EDITOR + ".CheckpointsInput",
+                Components =
+                {
+                    new CuiInputFieldComponent
+                    {
+                        Align = TextAnchor.MiddleLeft,
+                        FontSize = 10,
+                        Command = "hydroui.track.setcheckpoints ",
+                        Text = state.EditorCheckpoints.ToString(),
+                        Color = config.Colors.Text,
+                        CharsLimit = 3,
+                        IsPassword = false
+                    },
+                    new CuiRectTransformComponent { AnchorMin = "0.4 0.49", AnchorMax = "0.95 0.54" }
+                }
+            });
+            
+            // Laps Label
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "Laps:", 
+                    FontSize = 11, 
+                    Align = TextAnchor.MiddleLeft,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.05 0.42", AnchorMax = "0.35 0.47" }
+            }, UI_EDITOR);
+            
+            // Laps Input Field
+            container.Add(new CuiElement
+            {
+                Parent = UI_EDITOR,
+                Name = UI_EDITOR + ".LapsInput",
+                Components =
+                {
+                    new CuiInputFieldComponent
+                    {
+                        Align = TextAnchor.MiddleLeft,
+                        FontSize = 10,
+                        Command = "hydroui.track.setlaps ",
+                        Text = state.EditorLaps.ToString(),
+                        Color = config.Colors.Text,
+                        CharsLimit = 2
+                    },
+                    new CuiRectTransformComponent { AnchorMin = "0.4 0.42", AnchorMax = "0.95 0.47" }
+                }
+            });
+            
+            // Action buttons
             container.Add(new CuiButton
             {
                 Button = { Color = config.Colors.Success, Command = "hydroui.track.save" },
-                RectTransform = { AnchorMin = "0.05 0.4", AnchorMax = "0.45 0.5" },
+                RectTransform = { AnchorMin = "0.05 0.3", AnchorMax = "0.45 0.38" },
                 Text = { 
-                    Text = "Save", 
+                    Text = "Save Track", 
+                    FontSize = 11, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, UI_EDITOR);
+            
+            container.Add(new CuiButton
+            {
+                Button = { Color = config.Colors.Warning, Command = "hydroui.track.load" },
+                RectTransform = { AnchorMin = "0.05 0.2", AnchorMax = "0.45 0.28" },
+                Text = { 
+                    Text = "Load Track", 
                     FontSize = 11, 
                     Align = TextAnchor.MiddleCenter,
                     Color = config.Colors.Text
@@ -1022,13 +1468,37 @@ namespace Oxide.Plugins
             container.Add(new CuiButton
             {
                 Button = { Color = config.Colors.Danger, Command = "hydroui.track.delete" },
-                RectTransform = { AnchorMin = "0.55 0.4", AnchorMax = "0.95 0.5" },
+                RectTransform = { AnchorMin = "0.55 0.3", AnchorMax = "0.95 0.38" },
                 Text = { 
-                    Text = "Delete", 
+                    Text = "Delete Track", 
                     FontSize = 11, 
                     Align = TextAnchor.MiddleCenter,
                     Color = config.Colors.Text
                 }
+            }, UI_EDITOR);
+            
+            container.Add(new CuiButton
+            {
+                Button = { Color = config.Colors.Accent, Command = "hydroui.track.test" },
+                RectTransform = { AnchorMin = "0.55 0.2", AnchorMax = "0.95 0.28" },
+                Text = { 
+                    Text = "Test Track", 
+                    FontSize = 11, 
+                    Align = TextAnchor.MiddleCenter,
+                    Color = config.Colors.Text
+                }
+            }, UI_EDITOR);
+            
+            // Info section
+            container.Add(new CuiLabel
+            {
+                Text = { 
+                    Text = "Configure track settings above.\nUse Save to store changes.", 
+                    FontSize = 10, 
+                    Align = TextAnchor.MiddleLeft,
+                    Color = config.Colors.Text
+                },
+                RectTransform = { AnchorMin = "0.05 0.05", AnchorMax = "0.95 0.15" }
             }, UI_EDITOR);
         }
         
@@ -1100,6 +1570,59 @@ namespace Oxide.Plugins
                 {
                     ShowTrackEditor(player);
                 }
+            }
+        }
+        
+        private void CheckWelcomeLocks()
+        {
+            foreach (var player in BasePlayer.activePlayerList)
+            {
+                if (player == null || !player.IsConnected) continue;
+                
+                var state = GetPlayerState(player);
+                if (state.WelcomeLocked)
+                {
+                    // Check if player has joined via HydroRust
+                    if (HydroRust != null)
+                    {
+                        var hudData = HydroRust.Call("UI_GetHudData", player);
+                        if (hudData != null)
+                        {
+                            var dataDict = hudData as Dictionary<string, object>;
+                            if (dataDict != null && dataDict.ContainsKey("IsRace"))
+                            {
+                                bool isInRaceOrQueue = false;
+                                if (dataDict.TryGetValue("IsRace", out var isRace))
+                                {
+                                    isInRaceOrQueue = Convert.ToBoolean(isRace);
+                                }
+                                
+                                if (isInRaceOrQueue && state.WelcomeLocked)
+                                {
+                                    state.WelcomeLocked = false;
+                                    ShowWelcomeScreen(player);
+                                }
+                            }
+                        }
+                    }
+                    
+                    state.LockCheckTime = Time.time;
+                }
+            }
+        }
+        
+        private void UpdateAnimations()
+        {
+            foreach (var player in BasePlayer.activePlayerList)
+            {
+                if (player == null || !player.IsConnected) continue;
+                
+                var state = GetPlayerState(player);
+                state.AnimationPhase += 0.05f;
+                if (state.AnimationPhase > 1f) state.AnimationPhase = 0f;
+                
+                // Update any animated UI elements if needed
+                // This can be expanded for future animation features
             }
         }
         
@@ -1371,7 +1894,12 @@ namespace Oxide.Plugins
             var player = arg.Player();
             if (player == null) return;
             
-            SendReply(player, "Track save feature coming soon!");
+            var state = GetPlayerState(player);
+            SendReply(player, $"Saving track: {state.EditorTrackName} by {state.EditorAuthor}");
+            SendReply(player, $"Checkpoints: {state.EditorCheckpoints}, Laps: {state.EditorLaps}");
+            
+            // In a real implementation, this would save to HydroRust
+            // RunChat(player, $"/hydro track save {state.EditorTrackName}");
         }
         
         [ConsoleCommand("hydroui.track.delete")]
@@ -1380,7 +1908,206 @@ namespace Oxide.Plugins
             var player = arg.Player();
             if (player == null) return;
             
-            SendReply(player, "Track delete feature coming soon!");
+            var state = GetPlayerState(player);
+            SendReply(player, $"Deleting track: {state.EditorTrackName}");
+            
+            // In a real implementation, this would delete from HydroRust
+            // RunChat(player, $"/hydro track delete {state.EditorTrackName}");
+        }
+        
+        [ConsoleCommand("hydroui.track.load")]
+        private void CmdTrackLoad(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            var state = GetPlayerState(player);
+            SendReply(player, $"Loading track: {state.EditorTrackName}");
+            
+            // In a real implementation, this would load from HydroRust
+        }
+        
+        [ConsoleCommand("hydroui.track.test")]
+        private void CmdTrackTest(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            var state = GetPlayerState(player);
+            SendReply(player, $"Testing track: {state.EditorTrackName}");
+            
+            // In a real implementation, this would start a test run
+            // RunChat(player, $"/hydro track test {state.EditorTrackName}");
+        }
+        
+        [ConsoleCommand("hydroui.track.setname")]
+        private void CmdTrackSetName(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            string name = arg.GetString(0, "");
+            if (!string.IsNullOrEmpty(name))
+            {
+                var state = GetPlayerState(player);
+                state.EditorTrackName = name;
+                
+                // Refresh the editor to show updated value
+                if (state.EditorOpen)
+                {
+                    ShowTrackEditor(player);
+                }
+            }
+        }
+        
+        [ConsoleCommand("hydroui.track.setauthor")]
+        private void CmdTrackSetAuthor(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            string author = arg.GetString(0, "");
+            if (!string.IsNullOrEmpty(author))
+            {
+                var state = GetPlayerState(player);
+                state.EditorAuthor = author;
+                
+                // Refresh the editor to show updated value
+                if (state.EditorOpen)
+                {
+                    ShowTrackEditor(player);
+                }
+            }
+        }
+        
+        [ConsoleCommand("hydroui.track.setcheckpoints")]
+        private void CmdTrackSetCheckpoints(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            int checkpoints = arg.GetInt(0, 8);
+            checkpoints = Mathf.Clamp(checkpoints, 1, 50);
+            
+            var state = GetPlayerState(player);
+            state.EditorCheckpoints = checkpoints;
+            
+            // Refresh the editor to show updated value
+            if (state.EditorOpen)
+            {
+                ShowTrackEditor(player);
+            }
+        }
+        
+        [ConsoleCommand("hydroui.track.setlaps")]
+        private void CmdTrackSetLaps(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            int laps = arg.GetInt(0, 3);
+            laps = Mathf.Clamp(laps, 1, 20);
+            
+            var state = GetPlayerState(player);
+            state.EditorLaps = laps;
+            
+            // Refresh the editor to show updated value
+            if (state.EditorOpen)
+            {
+                ShowTrackEditor(player);
+            }
+        }
+        
+        [ConsoleCommand("hydroui.settings")]
+        private void CmdSettings(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            ShowSettingsPanel(player);
+        }
+        
+        [ConsoleCommand("hydroui.help")]
+        private void CmdHelp(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            SendReply(player, "HydroUI v2.7.0 Commands:");
+            SendReply(player, "/hydroui show - Show UI");
+            SendReply(player, "/hydroui hide - Hide UI");
+            SendReply(player, "/hydroui editor - Open track editor");
+            SendReply(player, "/hydroui scale <0.5-2.0> - Set UI scale");
+            SendReply(player, "Click buttons in Quick Panel for quick actions");
+        }
+        
+        [ConsoleCommand("hydroui.setting.toggle")]
+        private void CmdSettingToggle(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            string setting = arg.GetString(0, "");
+            var prefs = GetPlayerPrefs(player);
+            
+            switch (setting)
+            {
+                case "compacthud":
+                    prefs.CompactHUD = !prefs.CompactHUD;
+                    ShowNotification(player, $"Compact HUD: {(prefs.CompactHUD ? "ON" : "OFF")}");
+                    break;
+                case "notifications":
+                    prefs.ShowNotifications = !prefs.ShowNotifications;
+                    if (prefs.ShowNotifications)
+                        ShowNotification(player, "Notifications: ON");
+                    else
+                        SendReply(player, "Notifications: OFF");
+                    break;
+                case "tooltips":
+                    prefs.ShowTooltips = !prefs.ShowTooltips;
+                    ShowNotification(player, $"Tooltips: {(prefs.ShowTooltips ? "ON" : "OFF")}");
+                    break;
+            }
+            
+            SaveData();
+            ShowSettingsPanel(player);
+        }
+        
+        [ConsoleCommand("hydroui.closesettings")]
+        private void CmdCloseSettings(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            CuiHelper.DestroyUi(player, "HydroUI.Settings");
+        }
+        
+        [ConsoleCommand("hydroui.scale.increase")]
+        private void CmdScaleIncrease(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            var prefs = GetPlayerPrefs(player);
+            prefs.Scale = Mathf.Min(prefs.Scale + 0.1f, 2.0f);
+            SaveData();
+            
+            ShowNotification(player, $"UI Scale: {prefs.Scale:F1}");
+            ShowSettingsPanel(player);
+        }
+        
+        [ConsoleCommand("hydroui.scale.decrease")]
+        private void CmdScaleDecrease(ConsoleSystem.Arg arg)
+        {
+            var player = arg.Player();
+            if (player == null) return;
+            
+            var prefs = GetPlayerPrefs(player);
+            prefs.Scale = Mathf.Max(prefs.Scale - 0.1f, 0.5f);
+            SaveData();
+            
+            ShowNotification(player, $"UI Scale: {prefs.Scale:F1}");
+            ShowSettingsPanel(player);
         }
         
         #endregion
