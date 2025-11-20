@@ -33,6 +33,12 @@ namespace Oxide.Plugins
         private const string UI_EDITOR = "HydroUI.Editor";
         private const string UI_QUICKPANEL = "HydroUI.QuickPanel";
         
+        // Data file names
+        private const string PREFS_FILE = "HydroUI_Prefs";
+        
+        // UI Constants
+        private const string MENU_ICON = "☰";
+        
         private Timer hudTick;
         private Timer counterTick;
         private Timer editorRefreshTick;
@@ -232,7 +238,7 @@ namespace Oxide.Plugins
         {
             try
             {
-                playerPrefs = Interface.Oxide.DataFileSystem.ReadObject<Dictionary<ulong, PlayerPrefs>>("HydroUI_Prefs") 
+                playerPrefs = Interface.Oxide.DataFileSystem.ReadObject<Dictionary<ulong, PlayerPrefs>>(PREFS_FILE) 
                     ?? new Dictionary<ulong, PlayerPrefs>();
             }
             catch
@@ -243,7 +249,7 @@ namespace Oxide.Plugins
         
         private void SaveData()
         {
-            Interface.Oxide.DataFileSystem.WriteObject("HydroUI_Prefs", playerPrefs);
+            Interface.Oxide.DataFileSystem.WriteObject(PREFS_FILE, playerPrefs);
         }
         
         #endregion
@@ -676,7 +682,7 @@ namespace Oxide.Plugins
                 Button = { Color = config.Colors.Primary, Command = "hydroui.togglemenu" },
                 RectTransform = { AnchorMin = "0.85 0.85", AnchorMax = "0.9 0.9" },
                 Text = { 
-                    Text = "☰", 
+                    Text = MENU_ICON, 
                     FontSize = 20, 
                     Align = TextAnchor.MiddleCenter,
                     Color = config.Colors.Text

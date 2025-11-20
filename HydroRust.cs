@@ -74,6 +74,18 @@ namespace Oxide.Plugins
             
             [JsonProperty("CenterOfMassOffset")]
             public float CenterOfMassOffset { get; set; } = -0.5f;
+            
+            [JsonProperty("GroundCheckDistance")]
+            public float GroundCheckDistance { get; set; } = 2f;
+            
+            [JsonProperty("WaterProximityThreshold")]
+            public float WaterProximityThreshold { get; set; } = 0.5f;
+            
+            [JsonProperty("BaseDrag")]
+            public float BaseDrag { get; set; } = 0.5f;
+            
+            [JsonProperty("GravityMultiplier")]
+            public float GravityMultiplier { get; set; } = 0.5f;
         }
         
         private class LobbyConfig
@@ -322,14 +334,14 @@ namespace Oxide.Plugins
             RaycastHit hit;
             Vector3 origin = boat.transform.position;
             
-            if (Physics.Raycast(origin, Vector3.down, out hit, 2f, LayerMask.GetMask("Water")))
+            if (Physics.Raycast(origin, Vector3.down, out hit, config.Controls.GroundCheckDistance, LayerMask.GetMask("Water")))
             {
                 return true;
             }
             
             // Also check if close to water level
             var waterLevel = WaterSystem.GetHeight(boat.transform.position);
-            return boat.transform.position.y <= waterLevel + 0.5f;
+            return boat.transform.position.y <= waterLevel + config.Controls.WaterProximityThreshold;
         }
         
         private void ApplyStabilization(Rigidbody rb, bool isGrounded)
@@ -378,10 +390,10 @@ namespace Oxide.Plugins
         private void ApplyAirborneForces(Rigidbody rb)
         {
             // Extra drag while airborne
-            rb.drag = 0.5f + config.Controls.AirborneExtraDrag;
+            rb.drag = config.Controls.BaseDrag + config.Controls.AirborneExtraDrag;
             
             // Extra gravity
-            rb.AddForce(Vector3.down * 9.81f * 0.5f, ForceMode.Acceleration);
+            rb.AddForce(Vector3.down * 9.81f * config.Controls.GravityMultiplier, ForceMode.Acceleration);
             
             // Clamp vertical velocity
             Vector3 vel = rb.velocity;
