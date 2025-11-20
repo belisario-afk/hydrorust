@@ -402,7 +402,7 @@ namespace Oxide.Plugins
 
             // Extra gravity and drag in air
             rb.AddForce(Vector3.down * configData.Controls.ExtraGravityInAir, ForceMode.Force);
-            rb.velocity = rb.velocity * (1f - configData.Controls.AirborneExtraDrag * Time.deltaTime);
+            rb.AddForce(-rb.velocity * configData.Controls.AirborneExtraDrag, ForceMode.Force);
 
             // Clamp pitch and roll
             ClampRotation(boat, configData.Controls.MaxPitchDegrees, configData.Controls.MaxRollDegrees);
@@ -683,7 +683,7 @@ namespace Oxide.Plugins
                     result["TotalLaps"] = state.CurrentTrack.TotalLaps;
                     result["TotalCheckpoints"] = state.CurrentTrack.Checkpoints.Count;
                     result["IsRace"] = state.CurrentTrack.IsRace;
-                    result["RaceMode"] = state.CurrentTrack.IsRace ? "race" : "battle";
+                    result["RaceMode"] = state.CurrentTrack.IsRace ? "normal" : "battle";
                 }
 
                 result["Lap"] = state.CurrentLap;
@@ -692,10 +692,9 @@ namespace Oxide.Plugins
                 result["Speed"] = state.Speed;
                 result["Boost01"] = state.Boost;
                 result["Position"] = state.Position;
-                result["TotalRacers"] = state.TotalRacers;
+                result["Racers"] = state.TotalRacers;
                 result["Finished"] = state.Finished;
                 result["FinishTime"] = state.FinishTime;
-                result["Racers"] = state.TotalRacers;
             }
 
             return result;
