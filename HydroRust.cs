@@ -513,8 +513,10 @@ namespace Oxide.Plugins
             if (currentVoting == null)
                 return;
 
-            // Determine winner
-            string winner = currentVoting.Votes["normal"] > currentVoting.Votes["battle"] ? "normal" : "battle";
+            // Determine winner - on tie, default to normal mode
+            int normalVotes = currentVoting.Votes["normal"];
+            int battleVotes = currentVoting.Votes["battle"];
+            string winner = normalVotes >= battleVotes ? "normal" : "battle";
 
             foreach (var uid in currentVoting.Participants)
             {
@@ -683,6 +685,7 @@ namespace Oxide.Plugins
                     result["TotalLaps"] = state.CurrentTrack.TotalLaps;
                     result["TotalCheckpoints"] = state.CurrentTrack.Checkpoints.Count;
                     result["IsRace"] = state.CurrentTrack.IsRace;
+                    // Map IsRace to mode string: true="normal" (standard racing), false="battle"
                     result["RaceMode"] = state.CurrentTrack.IsRace ? "normal" : "battle";
                 }
 

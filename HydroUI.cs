@@ -489,6 +489,7 @@ namespace Oxide.Plugins
             }
             else if (hudData.IsRace)
             {
+                // Display mode based on RaceMode: "normal" shows [Race], "battle" shows [Battle]
                 modeIndicator = hudData.RaceMode == "battle" ? "[Battle]" : "[Race]";
             }
 
